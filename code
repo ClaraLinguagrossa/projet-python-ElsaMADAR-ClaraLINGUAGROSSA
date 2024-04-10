@@ -1,0 +1,101 @@
+# CLARA LINGUAGROSSA & ELSA MADAR - PROJET PYTHON 2024
+
+import ccxt
+import pandas as pd
+import numpy as np
+from scipy.stats import norm
+
+def getbinance (per_days, day_start):
+    exchange = ccxt.binance()  # Utilisation de Binance
+    symbol = 'BTC/USDT'  # Symbole pour Bitcoin en USDT
+    timeframe = '1d'  # Période d'une journée
+    lsince = exchange.parse8601(f"{day_start}T00:00:00Z")
+
+    # 1) TÉLÉCHARGEMENT DES DONNÉES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    candles = exchange.fetch_ohlcv(symbol, timeframe, lsince, per_days)
+    df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+
+    # 2) CALCUL DE LA VOLATILITÉ HISTORIQUE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    df['log_return'] = np.log(df['close'] / df['close'].shift(1))
+    volatility = df['log_return'].std() * np.sqrt(252)  # 252 jours de trading
+
+    last_price = df['close'].iloc[-1]
+
+    return last_price, volatility
+
+# 3) DÉFINITION DE LA CLASSE POUR LE PRINCING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+class OptionPricing:
+    def __init__(self, strike_price, per_days,day_start,n_days,n_simulations):  # n_days : Nb de jours de l'option
+        self.strike_price = strike_price
+        self.per_days=per_days
+        self.day_start=day_start
+        self.n_days=n_days
+        self.n_simulations=n_simulations
+        last_price,volatility=getbinance(per_days, day_start)
+        self.volatility = volatility
+        self.last_price = last_price
+        
+    def monte_carlo(self, last_price, k, n_days, r, volatility, n_simulations, option_type='call'):
+        simulation_df = pd.DataFrame()
+        for x in range(n_simulations):
+            count = 0
+            daily_volatility = volatility / np.sqrt(365)  # Ajustement pour le calcul quotidien
+            price_series = []
+            
+            price = last_price * (1 + np.random.normal(0, daily_volatility))
+            price_series.append(price)
+            
+            for y in range(n_days-1):
+                price = price_series[count] * (1 + np.random.normal(0, daily_volatility))
+                price_series.append(price)
+                count += 1
+
+            simulation_df[x] = price_series
+            
+        if option_type == 'call':
+            payoffs = np.maximum(simulation_df.iloc[-1] - k, 0) 
+        else:
+            payoffs = np.maximum(k-simulation_df.iloc[-1], 0) 
+        
+        call_price = np.exp(-r * n_days/365) * np.mean(payoffs)
+        return(call_price)
+    
+    def black_scholes(self, s, k, t, r, sigma, option_type='call'):
+        """
+        Calcul du prix d'une option européenne avec la formule de Black-Scholes.
+        
+        s: prix actuel de l'actif sous-jacent
+        k: strike price de l'option
+        t: temps jusqu'à l'échéance (en années)
+        r: taux d'intérêt sans risque
+        sigma: volatilité de l'actif sous-jacent
+        option_type: type d'option ('call' ou 'put')
+        """
+        d1 = (np.log(s / k) + (r + 0.5 * sigma**2) * t) / (sigma * np.sqrt(t))
+        d2 = d1 - sigma * np.sqrt(t)
+        
+        if option_type == 'call':
+            option_price = (s * norm.cdf(d1) - k * np.exp(-r * t) * norm.cdf(d2))
+        else:
+            option_price = (k * np.exp(-r * t) * norm.cdf(-d2) - s * norm.cdf(-d1))
+        
+        return option_price
+
+
+day_start = input("Entrez la date de début pour les données historiques (format YYYY-MM-DD): ")  # Date de début
+per_days = int(input("Entrez le nombre de jours pour les données historiques: ")) # Date de fin
+n_simulations = int(input("Entrez le nombre de simulations pour la simulation de Monte Carlo: "))
+n_days = int(input("Entrez le nombre de jours pour la période de simulation: "))
+
+strike_price=int(input("Entrez le strike price: "))
+p1 = OptionPricing(strike_price, per_days,day_start,n_days,n_simulations) 
+
+# 4) PRIX DE L'OPTION %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+print(f"Prix actuel de l'actif sous-)jacent: {p1.last_price}")
+
+prix_option1 = p1.monte_carlo(p1.last_price, p1.strike_price, p1.n_days, 0, p1.volatility, p1.n_simulations,'call')
+prix_option2 = p1.black_scholes(p1.last_price, p1.strike_price, p1.n_days/365, 0, p1.volatility, 'call')
+
+print(f"Le prix de l'option avec Monte Carlo est : {prix_option1}")
+print(f"Le prix de l'option avec Black-Scholes est : {prix_option2}")
