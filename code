@@ -1,4 +1,4 @@
-# CLARA LINGUAGROSSA & ELSA MADAR - PROJET PYTHON 2024
+# CLARA LINGUAGROSSA & ELSA MADAR - PROJET PYTHON 2024 - SUJET D : Création d’une Classe pour le Calcul du Prix d’Option
 
 import ccxt
 import pandas as pd
@@ -11,17 +11,15 @@ def getbinance (per_days, day_start):
     timeframe = '1d'  # Période d'une journée
     lsince = exchange.parse8601(f"{day_start}T00:00:00Z")
 
-    # 1) TÉLÉCHARGEMENT DES DONNÉES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# 1) TÉLÉCHARGEMENT DES DONNÉES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     candles = exchange.fetch_ohlcv(symbol, timeframe, lsince, per_days)
     df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
 
-    # 2) CALCUL DE LA VOLATILITÉ HISTORIQUE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# 2) CALCUL DE LA VOLATILITÉ HISTORIQUE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     df['log_return'] = np.log(df['close'] / df['close'].shift(1))
     volatility = df['log_return'].std() * np.sqrt(252)  # 252 jours de trading
-
     last_price = df['close'].iloc[-1]
-
     return last_price, volatility
 
 # 3) DÉFINITION DE LA CLASSE POUR LE PRINCING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -64,7 +62,6 @@ class OptionPricing:
     def black_scholes(self, s, k, t, r, sigma, option_type='call'):
         """
         Calcul du prix d'une option européenne avec la formule de Black-Scholes.
-        
         s: prix actuel de l'actif sous-jacent
         k: strike price de l'option
         t: temps jusqu'à l'échéance (en années)
